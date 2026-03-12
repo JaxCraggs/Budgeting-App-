@@ -8,28 +8,65 @@ import streamlit as st
 FILE_NAME = "budget_data.csv"
 SETTINGS_FILE = "budget_settings.csv"
 
-st.set_page_config(page_title="Budgeting App", layout="centered")
+st.set_page_config(
+    page_title="Personal Finance App",
+    page_icon="💰",
+    layout="centered"
+)
 
 st.markdown("""
 <style>
     .main {
         padding-top: 1rem;
     }
+
     h1, h2, h3 {
-        color: #1f3b73;
+        color: #17375e;
     }
-    div[data-testid="stMetric"] {
-        background-color: #f7f9fc;
-        padding: 15px;
-        border-radius: 12px;
-        border: 1px solid #e6ecf5;
+
+    .kpi-card {
+        background: #f8fbff;
+        border: 1px solid #d9e6f2;
+        border-radius: 16px;
+        padding: 18px;
+        margin-bottom: 10px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+    }
+
+    .kpi-title {
+        font-size: 0.95rem;
+        color: #4b5d73;
+        margin-bottom: 6px;
+    }
+
+    .kpi-value {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #17375e;
+    }
+
+    .section-card {
+        background: #ffffff;
+        border: 1px solid #e8eef5;
+        border-radius: 16px;
+        padding: 18px;
+        margin-bottom: 18px;
+    }
+
+    .small-note {
+        color: #5f6b7a;
+        font-size: 0.9rem;
     }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("Personal Finance App")
+st.title("💰 Personal Finance App")
+st.caption("Track spending, monitor your budget, and review your financial trends.")
 
 
+# -----------------------------
+# Data functions
+# -----------------------------
 def load_data():
     if os.path.exists(FILE_NAME):
         df = pd.read_csv(FILE_NAME)
@@ -67,6 +104,29 @@ def save_settings(monthly_budget, savings_goal):
     settings_df.to_csv(SETTINGS_FILE, index=False)
 
 
+def prepare_data():
+    df = st.session_state.data.copy()
+    if not df.empty:
+        df["Amount"] = pd.to_numeric(df["Amount"], errors="coerce").fillna(0)
+        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+    return df
+
+
+def metric_card(title, value):
+    st.markdown(
+        f"""
+        <div class="kpi-card">
+            <div class="kpi-title">{title}</div>
+            <div class="kpi-value">{value}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+# -----------------------------
+# Session state
+# -----------------------------
 if "data" not in st.session_state:
     st.session_state.data = load_data()
 
@@ -76,14 +136,9 @@ if "monthly_budget" not in st.session_state or "savings_goal" not in st.session_
     st.session_state.savings_goal = loaded_goal
 
 
-def prepare_data():
-    df = st.session_state.data.copy()
-    if not df.empty:
-        df["Amount"] = pd.to_numeric(df["Amount"], errors="coerce").fillna(0)
-        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-    return df
-
-
+# -----------------------------
+# Categories
+# -----------------------------
 expense_categories = [
     "Groceries", "Travel", "Mortgage", "Energy", "HCA Coach", "PCL HSE INS",
     "NOW Broadband", "Entertainment", "Shopping", "Takeout", "Savings", "Other",
@@ -95,6 +150,10 @@ income_categories = [
     "Salary", "Freelance", "Bonus", "Business", "Investment", "ISA"
 ]
 
+
+# -----------------------------
+# Tabs
+# -----------------------------
 tab1, tab2, tab3, tab4 = st.tabs(["Dashboard", "Add Transaction", "Reports", "Settings"])
 
 data = prepare_data()
@@ -104,17 +163,28 @@ total_expenses = data.loc[data["Type"] == "Expense", "Amount"].sum() if not data
 balance = total_income - total_expenses
 remaining_budget = st.session_state.monthly_budget - total_expenses
 
+expense_data = data[data["Type"] == "Expense"] if not data.empty else pd.DataFrame()
+
 savings_progress = data.loc[data["Category"] == "Savings", "Amount"].sum() if not data.empty else 0.0
 savings_pct = min((savings_progress / st.session_state.savings_goal) * 100, 100.0) if st.session_state.savings_goal > 0 else 0.0
 
+
+# -----------------------------
+# Dashboard
+# -----------------------------
 with tab1:
-    st.subheader("Dashboard")
+    st.subheader("📊 Dashboard")
 
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Income", f"£{total_income:,.2f}")
-    m2.metric("Expenses", f"£{total_expenses:,.2f}")
-    m3.metric("Balance", f"£{balance:,.2f}")
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        metric_card("Income", f"£{total_income:,.2f}")
+    with c2:
+        metric_card("Expenses", f"£{total_expenses:,.2f}")
+    with c3:
+        metric_card("Balance", f"£{balance:,.2f}")
 
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
+    st.markdown("### 💡 Budget Overview")
     st.write(f"**Monthly Budget:** £{st.session_state.monthly_budget:,.2f}")
     st.write(f"**Remaining Budget:** £{remaining_budget:,.2f}")
 
@@ -125,25 +195,76 @@ with tab1:
     else:
         st.success("You are within your monthly budget.")
 
-    st.subheader("Savings Goal")
-    st.write(f"**Goal:** £{st.session_state.savings_goal:,.2f}")
-    st.write(f"**Saved so far:** £{savings_progress:,.2f}")
-    st.progress(savings_pct / 100)
-    st.caption(f"{savings_pct:.1f}% of savings goal reached")
-
-    st.subheader("Spending Insights")
-    expense_data = data[data["Type"] == "Expense"] if not data.empty else pd.DataFrame()
-
     if not expense_data.empty:
-        category_totals = expense_data.groupby("Category")["Amount"].sum().sort_values(ascending=False)
-        top_category = category_totals.index[0]
-        top_amount = category_totals.iloc[0]
-        st.info(f"Highest spending category: {top_category} (£{top_amount:,.2f})")
-    else:
-        st.info("Add expense transactions to see spending insights.")
+        biggest_category = (
+            expense_data.groupby("Category")["Amount"]
+            .sum()
+            .sort_values(ascending=False)
+            .index[0]
+        )
+        st.warning(f"Most of your spending is going to **{biggest_category}**.")
+    st.markdown("</div>", unsafe_allow_html=True)
 
+    left, right = st.columns([1.15, 0.85])
+
+    with left:
+        st.markdown('<div class="section-card">', unsafe_allow_html=True)
+        st.markdown("### 🥧 Expense Breakdown")
+
+        if not expense_data.empty:
+            summary = expense_data.groupby("Category", as_index=False)["Amount"].sum()
+
+            fig = px.pie(
+                summary,
+                names="Category",
+                values="Amount",
+                title="",
+                hole=0.45
+            )
+            fig.update_traces(textposition="inside", textinfo="percent")
+            fig.update_layout(
+                margin=dict(l=10, r=10, t=10, b=10),
+                legend_title_text="Category"
+            )
+            st.plotly_chart(fig, width="stretch")
+        else:
+            st.info("Add expense transactions to see your expense breakdown.")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    with right:
+        st.markdown('<div class="section-card">', unsafe_allow_html=True)
+        st.markdown("### 🎯 Savings Goal")
+        st.write(f"**Goal:** £{st.session_state.savings_goal:,.2f}")
+        st.write(f"**Saved so far:** £{savings_progress:,.2f}")
+        st.progress(savings_pct / 100)
+        st.caption(f"{savings_pct:.1f}% of savings goal reached")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        st.markdown('<div class="section-card">', unsafe_allow_html=True)
+        st.markdown("### 🔍 Top Spending Categories")
+
+        if not expense_data.empty:
+            top3 = (
+                expense_data.groupby("Category")["Amount"]
+                .sum()
+                .sort_values(ascending=False)
+                .head(3)
+            )
+
+            for category, amount in top3.items():
+                st.markdown(f"**{category}** — £{amount:,.2f}")
+        else:
+            st.info("Add expense transactions to see spending insights.")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+
+# -----------------------------
+# Add / Edit / Delete
+# -----------------------------
 with tab2:
-    st.subheader("Add Transaction")
+    st.subheader("➕ Add Transaction")
+
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
 
     col1, col2 = st.columns(2)
     with col1:
@@ -187,7 +308,10 @@ with tab2:
             st.success("Transaction added and saved.")
             st.rerun()
 
-    st.subheader("Edit Transaction")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.subheader("✏️ Edit Transaction")
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
 
     data = prepare_data()
     if not data.empty:
@@ -262,7 +386,10 @@ with tab2:
     else:
         st.info("No transactions available to edit.")
 
-    st.subheader("Delete Transaction")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.subheader("🗑️ Delete Transaction")
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
 
     data = prepare_data()
     if not data.empty:
@@ -282,49 +409,26 @@ with tab2:
     else:
         st.info("No transactions available to delete.")
 
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+# -----------------------------
+# Reports
+# -----------------------------
 with tab3:
-    st.subheader("Reports")
+    st.subheader("📈 Reports")
 
     data = prepare_data()
-
-    st.markdown("### Transactions")
-    if not data.empty:
-        display_data = data.copy()
-        display_data["Date"] = display_data["Date"].dt.strftime("%Y-%m-%d")
-        display_data["Amount"] = display_data["Amount"].map(lambda x: f"£{x:,.2f}")
-        st.dataframe(display_data, width="stretch")
-    else:
-        st.info("No transactions added yet.")
-
-    st.markdown("### Expense Summary")
     expense_data = data[data["Type"] == "Expense"] if not data.empty else pd.DataFrame()
 
-    if not expense_data.empty:
-        summary = expense_data.groupby("Category", as_index=False)["Amount"].sum()
-        summary = summary.sort_values(by="Amount", ascending=False)
-
-        summary_display = summary.copy()
-        summary_display["Amount"] = summary_display["Amount"].map(lambda x: f"£{x:,.2f}")
-        st.dataframe(summary_display, width="stretch")
-
-        fig1 = px.pie(
-            summary,
-            names="Category",
-            values="Amount",
-            title="Expense Breakdown"
-        )
-        st.plotly_chart(fig1, width="stretch")
-    else:
-        st.info("No expense data available yet.")
-
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
     st.markdown("### Monthly Trend")
+
     if not data.empty and data["Date"].notna().any():
         trend_data = data.copy()
         trend_data["Month"] = trend_data["Date"].dt.to_period("M").astype(str)
 
         monthly_summary = trend_data.groupby(["Month", "Type"], as_index=False)["Amount"].sum()
-
-        st.dataframe(monthly_summary, width="stretch")
 
         fig2 = px.line(
             monthly_summary,
@@ -334,31 +438,67 @@ with tab3:
             markers=True,
             title="Monthly Income vs Expenses"
         )
+        fig2.update_layout(margin=dict(l=10, r=10, t=40, b=10))
         st.plotly_chart(fig2, width="stretch")
     else:
         st.info("Add dated transactions to see monthly trends.")
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("### Export Data")
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
+    st.markdown("### Expense Summary")
+
+    if not expense_data.empty:
+        summary = expense_data.groupby("Category", as_index=False)["Amount"].sum()
+        summary = summary.sort_values(by="Amount", ascending=False)
+
+        summary_display = summary.copy()
+        summary_display["Amount"] = summary_display["Amount"].map(lambda x: f"£{x:,.2f}")
+        st.dataframe(summary_display, width="stretch")
+    else:
+        st.info("No expense data available yet.")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
+    st.markdown("### All Transactions")
+
     if not data.empty:
-        csv_data = st.session_state.data.copy()
-        csv_data["Date"] = pd.to_datetime(csv_data["Date"], errors="coerce").dt.strftime("%Y-%m-%d")
-        st.download_button(
-            label="Download CSV",
-            data=csv_data.to_csv(index=False).encode("utf-8"),
-            file_name="budget_data.csv",
-            mime="text/csv",
-            width="stretch"
-        )
+        display_data = data.copy()
+        display_data["Date"] = display_data["Date"].dt.strftime("%Y-%m-%d")
+        display_data["Amount"] = display_data["Amount"].map(lambda x: f"£{x:,.2f}")
+        st.dataframe(display_data, width="stretch")
+    else:
+        st.info("No transactions added yet.")
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("### Reset")
-    if st.button("Clear All Data", width="stretch"):
-        st.session_state.data = pd.DataFrame(columns=["Date", "Type", "Amount", "Category"])
-        save_data(st.session_state.data)
-        st.success("All data cleared.")
-        st.rerun()
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("### Export Data")
+        if not data.empty:
+            csv_data = st.session_state.data.copy()
+            csv_data["Date"] = pd.to_datetime(csv_data["Date"], errors="coerce").dt.strftime("%Y-%m-%d")
+            st.download_button(
+                label="Download CSV",
+                data=csv_data.to_csv(index=False).encode("utf-8"),
+                file_name="budget_data.csv",
+                mime="text/csv",
+                width="stretch"
+            )
+    with c2:
+        st.markdown("### Reset")
+        if st.button("Clear All Data", width="stretch"):
+            st.session_state.data = pd.DataFrame(columns=["Date", "Type", "Amount", "Category"])
+            save_data(st.session_state.data)
+            st.success("All data cleared.")
+            st.rerun()
 
+
+# -----------------------------
+# Settings
+# -----------------------------
 with tab4:
-    st.subheader("Budget Settings")
+    st.subheader("⚙️ Budget Settings")
+
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
 
     new_budget = st.number_input(
         "Set Monthly Budget (£)",
@@ -380,3 +520,6 @@ with tab4:
         save_settings(new_budget, new_goal)
         st.success("Settings saved.")
         st.rerun()
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
