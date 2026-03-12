@@ -447,15 +447,6 @@ with tab3:
     st.markdown('<div class="section-card">', unsafe_allow_html=True)
     st.markdown("### Expense Summary")
 
-    if not expense_data.empty:
-        summary = expense_data.groupby("Category", as_index=False)["Amount"].sum()
-        summary = summary.sort_values(by="Amount", ascending=False)
-
-        summary_display = summary.copy()
-        summary_display["Amount"] = summary_display["Amount"].map(lambda x: f"£{x:,.2f}")
-        st.dataframe(summary_display, width="stretch")
-    else:
-        st.info("No expense data available yet.")
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown('<div class="section-card">', unsafe_allow_html=True)
@@ -522,4 +513,11 @@ with tab4:
         st.rerun()
 
     st.markdown("</div>", unsafe_allow_html=True)
+
+
+   
+
+        
+
+
 
